@@ -15,42 +15,36 @@ import argparse
 import time
 
 
-def plotpart(X,N,n,Xs,Ys,last=False):
-    global fig
-    global ax
+def plotpart(X, N, n, Xs, Ys, ax=None, FIGS=None, last=False):
     xvec = np.zeros(n**2)
     for i in range(0,N):
         xvec[np.where((X[:,i] > 0.99))] = 2*i+5
     xvec = xvec.reshape((n,n))
     xvec = np.around(xvec)
-    ax.contourf(Xs,Ys,xvec)
-    ax.axis("scaled")
-    plt.show()
-    if last:
-        fig.savefig(f'figure_{n}.png')
-    plt.pause(0.001)
+    if ax is not None:
+        ax.contourf(Xs, Ys, xvec)
+        ax.axis("scaled")
+        plt.show()
+        if last:
+            plt.savefig(f'figure_{n}.png')
+        plt.pause(0.001)
+    else:
+        plt.contourf(Xs, Ys, xvec)
+        plt.axis("scaled")
+        FIGS.append(plt.figure())
     
-def variableStepOptpart(n,N,c,iters,outer_shape,threshold=0.01,k=5,init_data=None):
+def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, threshold=0.01, k=5, init_data=None):
     # outer_shape is the shape we start by penalizing. The values it takes are S: Square and D: Disk
     
     new_data = {
         'n' : n,
         'N' : N,
-        'c' : c,
-        'iers' : iters,
-        'outer_shape' : outer_shape,
     }
     
     print("The given paramteres are:")
     for key, value in new_data.items():
         print(f"{key} = {value}")
-    
-    h = 1/n
-    L = 1/h**2*diags([4,-1,-1,-1,-1],[0,-1,1,n,-n],shape=(n**2,n**2)) 
-    
-    N_matrix = diags([1,1,1,1],[-1,1,n,-n],shape=(n**2,n**2),dtype=int)
-    Nk = np.linalg.matrix_power(np.matrix(N_matrix),k)[0,0]
-    
+                        
     xs = np.linspace(0,1,n)
     ys = np.linspace(0,1,n)
 
@@ -63,20 +57,30 @@ def variableStepOptpart(n,N,c,iters,outer_shape,threshold=0.01,k=5,init_data=Non
         init_xs = np.linspace(0,1,init_n)
         init_ys = np.linspace(0,1,init_n)
         alpha = max(init_data['alpha'],1)
-        assert init_N == N    # During interpolation we do not change the number of components
+        if init_data['Nk'].shape[0] == n:
+            Nk = init_data['Nk']
+            L = init_data['L']
+        else:
+            N_matrix = diags([1,1,1,1],[-1,1,n,-n],shape=(n**2,n**2),dtype=int)
+            Nk = np.linalg.matrix_power(np.matrix(N_matrix),k)[0,0]
+            h = 1/n
+            L = 1/h**2*diags([4,-1,-1,-1,-1],[0,-1,1,n,-n],shape=(n**2,n**2)) 
         for i in range(N):
-            fi = interp2d(init_xs,init_ys,init_X[:,i].reshape(init_n,init_n),kind='linear')
+            fi = interp2d(init_xs, init_ys, init_X[:,i].reshape(init_n, init_n), kind='linear')
             X[:,i] = fi(xs,ys).reshape(n**2)
             
     else:
-        # Otherwise we start with a random initialization.
+        h = 1/n
+        L = 1/h**2*diags([4,-1,-1,-1,-1],[0,-1,1,n,-n],shape=(n**2,n**2)) 
         X = np.random.rand(n**2,N)
         alpha = 1
-
+        N_matrix = diags([1,1,1,1],[-1,1,n,-n],shape=(n**2,n**2), dtype=int)
+        Nk = np.linalg.matrix_power(np.matrix(N_matrix), k)[0,0]
+        
         
     X = normalize(X, axis=1, norm='l1')
-
-    Xs,Ys = np.meshgrid(xs,ys)
+    
+    Xs, Ys = np.meshgrid(xs, ys)
     
     xf = Xs.flatten()
     yf = Ys.flatten()
@@ -144,39 +148,39 @@ def variableStepOptpart(n,N,c,iters,outer_shape,threshold=0.01,k=5,init_data=Non
         
 
         X = normalize(X, axis=1, norm='l1')
-        plotpart(X,N,n,Xs,Ys)
+        plotpart(X, N, n, Xs, Ys, ax, FIGS)
         print("Iter: ",tt," Val=",val, " Step=", alpha)
 
     new_data['val'] = val
     new_data['X'] = X
     new_data['alpha'] = alpha
+    new_data['Nk'] = Nk
+    new_data['L'] = L
     
     return new_data
 
     
-def optAlgo(N,outer_shape):
-    init_data = variableStepOptpart(n=50,N=N,c=1e3,iters=150,outer_shape=outer_shape,init_data=None)
-    Xs,Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
-    plotpart(init_data['X'],init_data['N'],init_data['n'],Xs,Ys,last=True)
-    init_data = variableStepOptpart(n=100,N=N,c=1e4,iters=50,outer_shape=outer_shape,init_data=init_data)
-    Xs,Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
-    plotpart(init_data['X'],init_data['N'],init_data['n'],Xs,Ys,last=True)
-    init_data = variableStepOptpart(n=150,N=N,c=1e5,iters=30,outer_shape=outer_shape,init_data=init_data)
-    Xs,Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
-    plotpart(init_data['X'],init_data['N'],init_data['n'],Xs,Ys,last=True)
-    init_data = variableStepOptpart(n=200,N=N,c=1e5,iters=10,outer_shape=outer_shape,init_data=init_data)
-    init_data = variableStepOptpart(n=250,N=N,c=1e5,iters=10,outer_shape=outer_shape,init_data=init_data)
-    Xs,Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
-    plotpart(init_data['X'],init_data['N'],init_data['n'],Xs,Ys,last=True)
+def opt_algo(N,outer_shape, ax):
+    init_data = variableStepOptpart(n=50, N=N, c=1e3, iters=150, outer_shape=outer_shape, ax=ax, init_data=None)
+    Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
+    plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
+    init_data = variableStepOptpart(n=100, N=N, c=1e4, iters=50, outer_shape=outer_shape, ax=ax, init_data=init_data)
+    Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
+    plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
+    init_data = variableStepOptpart(n=150, N=N, c=1e5, iters=30, outer_shape=outer_shape, ax=ax, init_data=init_data)
+    Xs, Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
+    plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
+    init_data = variableStepOptpart(n=200, N=N, c=1e5, iters=10, outer_shape=outer_shape, ax=ax, init_data=init_data)
+    init_data = variableStepOptpart(n=250, N=N, c=1e5, iters=10, outer_shape=outer_shape, ax=ax, init_data=init_data)
+    Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
+    plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
 
 def main(args):
-    global fig
-    global ax
     plt.ion()
     fig, ax = plt.subplots()
     N = args.number_partitions
     outer_shape = args.outer_shape
-    optAlgo(N, outer_shape)
+    opt_algo(N, outer_shape, ax)
 
     
 if __name__ == "__main__":
