@@ -16,6 +16,13 @@ import time
 
 
 def plotpart(X, N, n, Xs, Ys, ax=None, FIGS=None, last=False):
+    """
+    This is the plotting function. 
+    For each cell, we find the points in the grid that belong to it with the condition being the density is greter than a certain threshold given by 0.99
+    We color the cells differently to have clear visualizations of the cells.
+    If we are using ax i.e. it is not None then we are using the command line version of the algorithm in which case we have a window that shows each iteration and saves 5 plots in the same directory where the program was run.
+    Otherwise, we are running the algorithm from the jupyter notebook version in which case the figures of each iteration are saved in a variable FIGS. We can move around between all the figures thanks to a slider inline the notebook.
+    """
     xvec = np.zeros(n**2)
     for i in range(0,N):
         xvec[np.where((X[:,i] > 0.99))] = 2*i+5
@@ -34,6 +41,22 @@ def plotpart(X, N, n, Xs, Ys, ax=None, FIGS=None, last=False):
         FIGS.append(plt.figure())
     
 def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, threshold=0.01, k=5, init_data=None):
+    """
+    This is the optimization function that runs the algorithm for fixed variables as follows:
+        - n: Number of subdivisions of the side of the squared grid we work with. The higher n the better the resolution.
+        - N: Number of cells inside the grid.
+        - c: Penalization term for points outside a cell.
+        - iters: The number of iterations to run the gradient descent with variable step.
+        - outer_shape: The shape we start by penalizing. The values that it can take are 
+            'S': square.
+            'D': disk.
+            'T': (equilateral) triangle.
+        - ax: The axis on which we are going to display the figures if we run the command line version.
+        - FIGS: The list that stores all figures and through which we can iterate thanks to a slider in the notebook version.
+        - threshold: The variable representing the threshold after which a point is considered to belong to a cell. Note that for non initializaed data, it is set to be very low and consequently a point can belong to different cells.
+        - k: The neighbours of a given point are the points that are at most k steps away from that point.
+        - init_data: The dictionary that contains info about previous initialization if it exists.
+    """
     # outer_shape is the shape we start by penalizing. The values it takes are S: Square and D: Disk
     
     new_data = {
@@ -57,6 +80,7 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
         init_xs = np.linspace(0,1,init_n)
         init_ys = np.linspace(0,1,init_n)
         alpha = max(init_data['alpha'],1)
+        threshold = 0.99
         if init_data['Nk'].shape[0] == n:
             Nk = init_data['Nk']
             L = init_data['L']
@@ -96,7 +120,7 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
         ind = np.union1d(ind,indy2)
 
     elif outer_shape == 'D':
-        ind = np.where((yf-0.5)**2+(xf-0.5)**2 >= 0.25*0.8) #(0.25=r**2 where r is the radius equal to 0.5) 
+        ind = np.where((yf-0.5)**2+(xf-0.5)**2 >= 0.2) #(0.25=r**2 where r is the radius equal to 0.5) 
         
     elif outer_shape == 'T':
         sr3 = np.sqrt(3)
@@ -119,10 +143,13 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
         val = 0
         X_bis = np.zeros((n**2,N))
         for i in range(N):
-            phi_i = X[:,i].reshape(n**2,1) # The initial shape is (n**2,) so I precise it to 1 on 2nd dimension so that I can assign it to phi_i
-            bool_i = phi_i >= threshold # Array containing the points belonging to density i (it belongs if density is greater than a certain threshold)
+            phi_i = X[:,i].reshape(n**2,1) 
+            # The shape of a density is (n^2,1)
+            bool_i = phi_i >= threshold 
+            # Array containing booleans whether points belong to density i (it belongs if density is greater than a certain threshold)
             v = Nk.dot(bool_i)
-            coords_i = np.where(v>=1) # N is symmetric so is N^k so no need for transpose
+            coords_i = np.where(v>=1) 
+            # N is symmetric so is N^k so no need for transpose
             coords_i = np.union1d(coords_i,np.where(bool_i == True))
             # Coords_i contains coordinates of points belonging to density i as well as their neighbors
             bool_i = phi_i[coords_i]
@@ -130,7 +157,8 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
             D_i = diags([c*(1-bool_i).ravel()],[0],shape=(n_i,n_i))
             L_i = L[coords_i,:][:,coords_i]
             A_i = L_i+D_i
-            eigenvalue, u_i = eigsh(A_i,k=1,which='SM',tol=0.001) # since A is real symmetric square matrix we use eigsh for speed
+            eigenvalue, u_i = eigsh(A_i,k=1,which='SM',tol=0.01) 
+            # since A is real symmetric square matrix we use eigsh for speed
             u_i = u_i.real
             eigenvalue = eigenvalue.real
             val = val + eigenvalue
@@ -146,7 +174,6 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
             if alpha < 1e-1:
                 break
         
-
         X = normalize(X, axis=1, norm='l1')
         plotpart(X, N, n, Xs, Ys, ax, FIGS)
         print("Iter: ",tt," Val=",val, " Step=", alpha)
@@ -161,6 +188,10 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
 
     
 def opt_algo(N,outer_shape, ax):
+    """
+    This function is called in the command line version.
+    It runs the gradient descent with different resolutions and saves the plots in between for the output of different resolutions.
+    """
     init_data = variableStepOptpart(n=50, N=N, c=1e3, iters=150, outer_shape=outer_shape, ax=ax, init_data=None)
     Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
     plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
@@ -171,11 +202,17 @@ def opt_algo(N,outer_shape, ax):
     Xs, Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
     plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
     init_data = variableStepOptpart(n=200, N=N, c=1e5, iters=10, outer_shape=outer_shape, ax=ax, init_data=init_data)
+    Xs, Ys = np.meshgrid(np.linspace(0,1,init_data['n']),np.linspace(0,1,init_data['n']))
+    plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
     init_data = variableStepOptpart(n=250, N=N, c=1e5, iters=10, outer_shape=outer_shape, ax=ax, init_data=init_data)
     Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
     plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
 
 def main(args):
+    """
+    This is the main function of the command line version.
+    It specifies the visualization should be in a seperate window and calls opt_algo.
+    """
     plt.ion()
     fig, ax = plt.subplots()
     N = args.number_partitions
@@ -184,6 +221,13 @@ def main(args):
 
     
 if __name__ == "__main__":
+    """
+    Gets the parsing information in the command line version.
+    The arguments are:
+        -s / --outer_shape : Specifies the outer shape inside which we run the Optimal Partitioning.
+        -N / --number_partitions : Specifies the number of cells for which we run the Optimal Partitioning.
+    """
+    
     parser = argparse.ArgumentParser(description='Optimiazation Internship code.')
 
     parser.add_argument("-s", "--outer_shape", help="Gives the outer_shape in which we run the Optimal Partitioning. \nBy default, it is 'S' corresponding to square.", default="S")
