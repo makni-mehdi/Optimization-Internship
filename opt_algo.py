@@ -25,7 +25,7 @@ def plotpart(X, N, n, Xs, Ys, ax=None, FIGS=None, last=False):
     """
     xvec = np.zeros(n**2)
     for i in range(0,N):
-        xvec[np.where((X[:,i] > 0.99))] = 2*i+5
+        xvec[np.where((X[:,i] > 0.999))] = 2*i+5
     xvec = xvec.reshape((n,n))
     xvec = np.around(xvec)
     if ax is not None:
@@ -62,6 +62,7 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
     new_data = {
         'n' : n,
         'N' : N,
+        'outer_shape' : outer_shape
     }
     
     print("The given paramteres are:")
@@ -71,7 +72,12 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
     xs = np.linspace(0,1,n)
     ys = np.linspace(0,1,n)
 
-    if init_data:
+    Xs, Ys = np.meshgrid(xs, ys)
+    
+    xf = Xs.flatten()
+    yf = Ys.flatten()
+
+    if init_data is not None and init_data['N'] == N and init_data['outer_shape'] == outer_shape:
         # If previous data is available we interpolate.
         X = np.zeros((n**2,N))
         init_X = init_data['X']
@@ -80,63 +86,53 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
         init_xs = np.linspace(0,1,init_n)
         init_ys = np.linspace(0,1,init_n)
         alpha = max(init_data['alpha'],1)
-        threshold = 0.99
-        if init_data['Nk'].shape[0] == n:
-            Nk = init_data['Nk']
-            L = init_data['L']
-        else:
-            N_matrix = diags([1,1,1,1],[-1,1,n,-n],shape=(n**2,n**2),dtype=int)
-            Nk = np.linalg.matrix_power(np.matrix(N_matrix),k)[0,0]
-            h = 1/n
-            L = 1/h**2*diags([4,-1,-1,-1,-1],[0,-1,1,n,-n],shape=(n**2,n**2)) 
+        Nk = init_data['Nk']
+        L = init_data['L']
         for i in range(N):
             fi = interp2d(init_xs, init_ys, init_X[:,i].reshape(init_n, init_n), kind='linear')
-            X[:,i] = fi(xs,ys).reshape(n**2)
+            X[:,i] = fi(xs, ys).reshape(n**2)
             
-    else:
+    if init_data is None or init_data['n'] != n:
         h = 1/n
-        L = 1/h**2*diags([4,-1,-1,-1,-1],[0,-1,1,n,-n],shape=(n**2,n**2)) 
-        X = np.random.rand(n**2,N)
-        alpha = 1
-        N_matrix = diags([1,1,1,1],[-1,1,n,-n],shape=(n**2,n**2), dtype=int)
+        L = 1/h**2*diags([4,-1,-1,-1,-1], [0,-1,1,n,-n], shape=(n**2,n**2))
+        
+        if outer_shape == 'S':
+            indx1 = np.where(xf <= 1e-4)
+            indx2 = np.where(xf >= 0.999)
+            indy1 = np.where(yf <= 1e-4)
+            indy2 = np.where(yf >= 0.999)
+
+            ind = np.union1d(indx1, indx2)
+            ind = np.union1d(ind, indy1)
+            ind = np.union1d(ind, indy2)
+
+        elif outer_shape == 'D':
+            ind = np.where((yf-0.5)**2+(xf-0.5)**2 >= 0.2) #(0.25=r**2 where r is the radius equal to 0.5) 
+
+        elif outer_shape == 'T':
+            sr3 = np.sqrt(3)
+            ind1 = np.where(yf-sr3*xf >= 0.05)
+            ind2 = np.where(yf <= 0.1)
+            ind3 = np.where(yf+sr3*xf >= sr3+0.05)
+
+            ind = np.union1d(ind1, ind2)
+            ind = np.union1d(ind, ind3)
+
+        vec = np.zeros(n**2)
+        vec[ind] = c    
+
+        D   = diags(vec,0,shape=(n**2,n**2))
+        L   = L+D
+        
+        N_matrix = diags([1,1,1,1], [-1,1,n,-n], shape=(n**2,n**2), dtype=int)
         Nk = np.linalg.matrix_power(np.matrix(N_matrix), k)[0,0]
         
+        if init_data is None:
+            X = np.random.rand(n**2,N)
+            alpha = 1
         
     X = normalize(X, axis=1, norm='l1')
     
-    Xs, Ys = np.meshgrid(xs, ys)
-    
-    xf = Xs.flatten()
-    yf = Ys.flatten()
-    
-    if outer_shape == 'S':
-        indx1 = np.where(xf <= 1e-4)
-        indx2 = np.where(xf >= 0.999)
-        indy1 = np.where(yf <= 1e-4)
-        indy2 = np.where(yf >= 0.999)
-        
-        ind = np.union1d(indx1,indx2)
-        ind = np.union1d(ind,indy1)
-        ind = np.union1d(ind,indy2)
-
-    elif outer_shape == 'D':
-        ind = np.where((yf-0.5)**2+(xf-0.5)**2 >= 0.2) #(0.25=r**2 where r is the radius equal to 0.5) 
-        
-    elif outer_shape == 'T':
-        sr3 = np.sqrt(3)
-        ind1 = np.where(yf-sr3*xf >= 0.05)
-        ind2 = np.where(yf <= 0.1)
-        ind3 = np.where(yf+sr3*xf >= sr3+0.05)
-        
-        ind = np.union1d(ind1, ind2)
-        ind = np.union1d(ind, ind3)
-        
-    vec = np.zeros(n**2)
-    vec[ind] = c    
-
-    D   = diags(vec,0,shape=(n**2,n**2))
-    L   = L+D
-
     val_prev = np.inf
     
     for tt in range(iters):
@@ -150,14 +146,14 @@ def variableStepOptpart(n, N, c, iters, outer_shape, ax=None, FIGS=None, thresho
             v = Nk.dot(bool_i)
             coords_i = np.where(v>=1) 
             # N is symmetric so is N^k so no need for transpose
-            coords_i = np.union1d(coords_i,np.where(bool_i == True))
+            coords_i = np.union1d(coords_i, np.where(bool_i == True))
             # Coords_i contains coordinates of points belonging to density i as well as their neighbors
             bool_i = phi_i[coords_i]
             n_i = len(bool_i)
-            D_i = diags([c*(1-bool_i).ravel()],[0],shape=(n_i,n_i))
+            D_i = diags([c*(1-bool_i).ravel()], [0], shape=(n_i,n_i))
             L_i = L[coords_i,:][:,coords_i]
             A_i = L_i+D_i
-            eigenvalue, u_i = eigsh(A_i,k=1,which='SM',tol=0.01) 
+            eigenvalue, u_i = eigsh(A_i, k=1, which='SM', tol=0.01) 
             # since A is real symmetric square matrix we use eigsh for speed
             u_i = u_i.real
             eigenvalue = eigenvalue.real
@@ -207,6 +203,10 @@ def opt_algo(N,outer_shape, ax):
     init_data = variableStepOptpart(n=250, N=N, c=1e5, iters=10, outer_shape=outer_shape, ax=ax, init_data=init_data)
     Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
     plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
+    init_data = variableStepOptpart(n=300, N=N, c=1e6, iters=5, outer_shape=outer_shape, ax=ax, init_data=init_data)
+    Xs, Ys = np.meshgrid(np.linspace(0, 1, init_data['n']), np.linspace(0, 1, init_data['n']))
+    plotpart(init_data['X'], init_data['N'], init_data['n'], Xs, Ys, ax=ax, last=True)
+
 
 def main(args):
     """
