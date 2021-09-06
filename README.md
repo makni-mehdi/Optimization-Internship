@@ -29,14 +29,18 @@ Later you can go through the figures of all computed simulations with a slider w
 If we run the command line version, 5 figures will be saved on the same directory from which the user run the algorithm. We show a few samples of these outputs.
 
 `python opt_algo.py -N 6 `
+
 ![](./square_6_250.png)
 
 `python opt_algo.py -N 8 `
+
 ![](./square_8_250.png)
 
 `python opt_algo.py -N 8 -s D `
+
 ![](./disk_8_300.png)
 
 `python opt_algo.py -N 7 -s T `
+
 ![](./triangle_7_250.png)
 
